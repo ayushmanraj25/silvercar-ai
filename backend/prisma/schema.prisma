@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Resident {
+  id          Int      @id @default(autoincrement())
+  name        String
+  age         Int
+  gender      String
+  healthInfo  String?
+  // ADDED: The room field
+  room        String?  
+  createdAt   DateTime @default(now())
+}
+
+model Staff {
+  id        Int      @id @default(autoincrement())
+  name      String
+  role      String
+  email     String   @unique
+  password  String
+  // ADDED: The shift field to support the new StaffList component data
+  contact   String?  // Added this as well, based on the frontend form
+  shift     String? 
+}
+
+model Donation {
+  id          Int      @id @default(autoincrement())
+  donorName   String
+  amount      Float
+  date        DateTime @default(now())
+}
