@@ -8,15 +8,15 @@ datasource db {
 }
 
 model Resident {
-  id          Int      @id @default(autoincrement())
-  name        String
-  age         Int
-  gender      String
-  healthInfo  String?
-  // ADDED: The room field
-  room        String?  
-  createdAt   DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  name       String
+  age        Int
+  gender     String
+  healthInfo String?
+  room       String?
+  createdAt  DateTime @default(now())
 }
+
 
 model Staff {
   id        Int      @id @default(autoincrement())
@@ -35,3 +35,13 @@ model Donation {
   amount      Float
   date        DateTime @default(now())
 }
+model Health {
+  id            Int      @id @default(autoincrement())
+  residentName  String
+  heartRate     Int
+  bloodPressure String
+  status        String
+  createdAt     DateTime @default(now())
+}
+
+
