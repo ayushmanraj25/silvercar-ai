@@ -38,10 +38,24 @@ model Donation {
 model Health {
   id            Int      @id @default(autoincrement())
   residentName  String
+  age           Int
+  gender        String
   heartRate     Int
   bloodPressure String
+  temperature   Float
+  oxygenLevel   Int
   status        String
+  riskScore     Int?
   createdAt     DateTime @default(now())
 }
+model Alert {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  level       String
+  createdAt   DateTime @default(now())
+}
+
+
 
 

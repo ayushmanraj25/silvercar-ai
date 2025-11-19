@@ -11,246 +11,284 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json());
 
-// ✅ Test route
-app.get("/", (req, res) => res.send("SilverCare API running..."));
+/* ======================================================
+   AI RISK SCORE (0–100)
+====================================================== */
+function calculateRiskScore(hr, temp, bp_sys, oxygen) {
+  hr = Number(hr);
+  temp = Number(temp);
+  bp_sys = Number(bp_sys);
+  oxygen = Number(oxygen);
 
-/* ==============================
-   RESIDENT ROUTES
-============================== */
-app.get("/residents", async (req, res) => {
-  try {
-    const residents = await prisma.resident.findMany();
-    res.json(residents);
-  } catch (err) {
-    console.error("Error fetching residents:", err);
-    res.status(500).json({ error: "Failed to fetch residents" });
+  if (!hr || !temp || !bp_sys || !oxygen) return 0;
+
+  let score =
+    hr * 0.3 +              // HR weight
+    temp * 0.4 +            // Temp weight
+    (120 / bp_sys) * 15 +   // BP scaling
+    (98 / oxygen) * 10;     // Oxygen penalty
+
+  return Math.min(100, Math.round(score));
+}
+
+/* ======================================================
+   HEALTH STATUS PREDICTION
+====================================================== */
+function predictHealth({ heartRate, bp_sys, bp_dia, temperature, oxygen }) {
+  heartRate = Number(heartRate);
+  bp_sys = Number(bp_sys);
+  bp_dia = Number(bp_dia);
+  temperature = Number(temperature);
+  oxygen = Number(oxygen);
+
+  // 🔴 CRITICAL RULES
+  if (
+    heartRate > 140 ||
+    bp_sys > 160 ||
+    bp_dia > 100 ||
+    temperature > 103 ||
+    oxygen < 88
+  ) {
+    return "Critical";
   }
-});
 
-app.post("/residents", async (req, res) => {
-  const { name, age, gender, healthInfo, room } = req.body;
-
-  try {
-    const newResident = await prisma.resident.create({
-      data: {
-        name,
-        age: parseInt(age, 10),
-        gender,
-        healthInfo,
-        room,
-      },
-    });
-    res.json(newResident);
-  } catch (error) {
-    console.error("Error adding resident:", error);
-    res.status(500).json({ error: "Failed to add resident" });
+  // 🟡 WARNING RULES
+  if (
+    heartRate > 110 ||
+    bp_sys > 140 ||
+    bp_dia > 90 ||
+    temperature > 100.5 ||
+    oxygen < 94
+  ) {
+    return "Warning";
   }
-});
 
-app.put("/residents/:id", async (req, res) => {
-  const { id } = req.params;
-  const { name, age, gender, healthInfo, room } = req.body;
+  return "Normal";
+}
 
-  try {
-    const updatedResident = await prisma.resident.update({
-      where: { id: parseInt(id, 10) },
-      data: {
-        name,
-        age: parseInt(age, 10),
-        gender,
-        healthInfo,
-        room,
-      },
-    });
-    res.json(updatedResident);
-  } catch (err) {
-    console.error("Error updating resident:", err);
-    res.status(404).json({ error: "Resident not found or invalid data." });
-  }
-});
+/* ======================================================
+   AUTO ALERT CREATOR
+====================================================== */
+async function createAlert(record, status) {
+  if (!record || status === "Normal") return;
 
-app.delete("/residents/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    const deleted = await prisma.resident.delete({
-      where: { id: parseInt(id, 10) },
-    });
-    res.json(deleted);
-  } catch (err) {
-    console.error("Error deleting resident:", err);
-    res.status(500).json({ error: "Failed to delete resident" });
-  }
-});
+  await prisma.alert.create({
+    data: {
+      title: status === "Critical" ? "🚨 CRITICAL HEALTH ALERT" : "⚠️ Health Warning",
+      description: `${record.residentName}'s health status is ${status}`,
+      level: status,
+    },
+  });
+}
 
-/* ==============================
-   STAFF ROUTES
-============================== */
-app.get("/staff", async (req, res) => {
-  try {
-    const staff = await prisma.staff.findMany();
-    res.json(staff);
-  } catch (err) {
-    console.error("Error fetching staff:", err);
-    res.status(500).json({ error: "Failed to fetch staff" });
-  }
-});
+/* ======================================================
+   BASE ROUTE
+====================================================== */
+app.get("/", (_, res) =>
+  res.send("SilverCare AI Backend Running ✔ Risk Score + AI Prediction Active")
+);
 
-app.post("/staff", async (req, res) => {
-  const { name, role, contact, shift } = req.body;
-
-  const tempId = crypto.randomBytes(8).toString("hex");
-  const generatedEmail = `${name
-    .toLowerCase()
-    .replace(/\s/g, ".")}-temp-${tempId}@silvercare-ai.com`;
-  const generatedPassword = tempId;
-
-  try {
-    const newStaff = await prisma.staff.create({
-      data: {
-        name,
-        role,
-        contact,
-        shift,
-        email: generatedEmail,
-        password: generatedPassword,
-      },
-    });
-    res.json(newStaff);
-  } catch (error) {
-    console.error("Error adding staff:", error);
-    res.status(500).json({
-      error:
-        "Failed to add staff member. Check database connection or unique constraints.",
-    });
-  }
-});
-
-app.delete("/staff/:id", async (req, res) => {
-  const { id } = req.params;
-  try {
-    const deleted = await prisma.staff.delete({
-      where: { id: parseInt(id, 10) },
-    });
-    res.json(deleted);
-  } catch (err) {
-    console.error("Error deleting staff:", err);
-    res.status(500).json({ error: "Failed to delete staff member" });
-  }
-});
-
-/* ==============================
-   DONATION ROUTES
-============================== */
-app.get("/donations", async (req, res) => {
-  try {
-    const donations = await prisma.donation.findMany();
-    res.json(donations);
-  } catch (err) {
-    console.error("Error fetching donations:", err);
-    res.status(500).json({ error: "Failed to fetch donations" });
-  }
-});
-
-app.post("/donations", async (req, res) => {
-  const { donorName, amount } = req.body;
-  try {
-    const newDonation = await prisma.donation.create({
-      data: { donorName, amount: parseFloat(amount) },
-    });
-    res.json(newDonation);
-  } catch (err) {
-    console.error("Error adding donation:", err);
-    res.status(500).json({ error: "Failed to add donation" });
-  }
-});
-
-app.delete("/donations/:id", async (req, res) => {
-  try {
-    const deleted = await prisma.donation.delete({
-      where: { id: parseInt(req.params.id, 10) },
-    });
-    res.json(deleted);
-  } catch (err) {
-    console.error("Error deleting donation:", err);
-    res.status(500).json({ error: "Failed to delete donation" });
-  }
-});
-
-/* ==============================
-   HEALTH ROUTES
-============================== */
-app.get("/health", async (req, res) => {
+/* ======================================================
+   GET ALL HEALTH RECORDS
+====================================================== */
+app.get("/health", async (_, res) => {
   try {
     const records = await prisma.health.findMany({
       orderBy: { createdAt: "desc" },
     });
     res.json(records);
   } catch (err) {
-    console.error("Error fetching health data:", err);
-    res.status(500).json({ error: "Failed to fetch health data" });
+    res.status(500).json({ error: "Failed to fetch health records" });
   }
 });
 
+/* ======================================================
+   ADD NEW HEALTH RECORD
+====================================================== */
 app.post("/health", async (req, res) => {
-  const { residentName, heartRate, bloodPressure, status } = req.body;
+  const { residentName, age, gender, heartRate, bloodPressure, temperature, oxygenLevel } = req.body;
+
+  let bp_sys = 0, bp_dia = 0;
+
+  if (bloodPressure?.includes("/")) {
+    const [sys, dia] = bloodPressure.split("/");
+    bp_sys = Number(sys);
+    bp_dia = Number(dia);
+  }
+
+  const status = predictHealth({
+    heartRate,
+    bp_sys,
+    bp_dia,
+    temperature,
+    oxygen: oxygenLevel,
+  });
+
+  const riskScore = calculateRiskScore(
+    Number(heartRate),
+    Number(temperature),
+    Number(bp_sys),
+    Number(oxygenLevel)
+  );
+
   try {
     const newRecord = await prisma.health.create({
       data: {
         residentName,
-        heartRate: parseInt(heartRate, 10),
+        age: Number(age),
+        gender,
+        heartRate: Number(heartRate),
         bloodPressure,
+        temperature: Number(temperature),
+        oxygenLevel: Number(oxygenLevel),
         status,
+        riskScore,
       },
     });
+
+    await createAlert(newRecord, status);
+
     res.json(newRecord);
   } catch (err) {
-    console.error("Error adding health record:", err);
-    res.status(500).json({ error: "Failed to add health record" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to add record" });
   }
 });
 
-// ✅ NEW: Delete health record
+/* ======================================================
+   UPDATE HEALTH RECORD
+====================================================== */
+app.put("/health/:id", async (req, res) => {
+  const { id } = req.params;
+  const { residentName, age, gender, heartRate, bloodPressure, temperature, oxygenLevel } = req.body;
+
+  let bp_sys = 0, bp_dia = 0;
+
+  if (bloodPressure?.includes("/")) {
+    const [sys, dia] = bloodPressure.split("/");
+    bp_sys = Number(sys);
+    bp_dia = Number(dia);
+  }
+
+  const status = predictHealth({
+    heartRate,
+    bp_sys,
+    bp_dia,
+    temperature,
+    oxygen: oxygenLevel,
+  });
+
+  const riskScore = calculateRiskScore(
+    Number(heartRate),
+    Number(temperature),
+    Number(bp_sys),
+    Number(oxygenLevel)
+  );
+
+  try {
+    const updated = await prisma.health.update({
+      where: { id: Number(id) },
+      data: {
+        residentName,
+        age: Number(age),
+        gender,
+        heartRate: Number(heartRate),
+        bloodPressure,
+        temperature: Number(temperature),
+        oxygenLevel: Number(oxygenLevel),
+        status,
+        riskScore,
+      },
+    });
+
+    await createAlert(updated, status);
+
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update record" });
+  }
+});
+
+/* ======================================================
+   DELETE HEALTH RECORD
+====================================================== */
 app.delete("/health/:id", async (req, res) => {
   try {
     const deleted = await prisma.health.delete({
-      where: { id: parseInt(req.params.id, 10) },
+      where: { id: Number(req.params.id) },
     });
     res.json(deleted);
-  } catch (err) {
-    console.error("Error deleting health record:", err);
+  } catch {
     res.status(500).json({ error: "Failed to delete record" });
   }
 });
 
-/* ==============================
-   DASHBOARD STATS ROUTE ✅
-============================== */
-app.get("/stats", async (req, res) => {
-  try {
-    const totalResidents = await prisma.resident.count();
-    const totalStaff = await prisma.staff.count();
-    const totalDonations = await prisma.donation.aggregate({
-      _sum: { amount: true },
-    });
+/* ======================================================
+   OTHER ROUTES (RESIDENTS / STAFF / DONATIONS / ALERTS)
+====================================================== */
 
-    const criticalAlerts = await prisma.health.count({
-      where: { status: "Critical" },
-    });
-
-    res.json({
-      residents: totalResidents,
-      staff: totalStaff,
-      donations: totalDonations._sum.amount || 0,
-      criticalAlerts,
-    });
-  } catch (err) {
-    console.error("Error fetching stats:", err);
-    res.status(500).json({ error: "Failed to fetch stats" });
-  }
+app.get("/alerts", async (_, res) => {
+  res.json(await prisma.alert.findMany({ orderBy: { createdAt: "desc" } }));
 });
 
-/* ==============================
-   SERVER START
-============================== */
+app.get("/residents", async (_, res) => {
+  res.json(await prisma.resident.findMany());
+});
+
+app.post("/residents", async (req, res) => {
+  res.json(
+    await prisma.resident.create({
+      data: {
+        name: req.body.name,
+        age: Number(req.body.age),
+        gender: req.body.gender,
+        healthInfo: req.body.healthInfo,
+        room: req.body.room,
+      },
+    })
+  );
+});
+
+app.delete("/residents/:id", async (req, res) => {
+  res.json(await prisma.resident.delete({ where: { id: Number(req.params.id) } }));
+});
+
+// STAFF
+app.get("/staff", async (_, res) => {
+  res.json(await prisma.staff.findMany());
+});
+
+app.post("/staff", async (req, res) => {
+  const pass = crypto.randomBytes(4).toString("hex");
+  const email = `${req.body.name.toLowerCase().replace(/\s/g, ".")}-${pass}@silvercare.com`;
+
+  res.json(
+    await prisma.staff.create({
+      data: { ...req.body, email, password: pass },
+    })
+  );
+});
+
+// DONATIONS
+app.get("/donations", async (_, res) => {
+  res.json(await prisma.donation.findMany());
+});
+
+app.post("/donations", async (req, res) => {
+  res.json(
+    await prisma.donation.create({
+      data: {
+        donorName: req.body.donorName,
+        amount: Number(req.body.amount),
+      },
+    })
+  );
+});
+
+/* ======================================================
+   START SERVER
+====================================================== */
 const PORT = 5001;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`🚀 SilverCare AI Backend running on port ${PORT}`)
+);

@@ -1,29 +1,44 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { MainLayout } from "../components/layout/MainLayout";
-import { ShieldAlert, AlertCircle } from "lucide-react";
+import { ShieldAlert, AlertCircle, RefreshCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function SafetyAlerts() {
   const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const fetchAlerts = () => {
+    setLoading(true);
     axios
       .get("http://localhost:5001/alerts")
       .then((res) => setAlerts(res.data))
-      .catch((err) => console.error("Error fetching alerts:", err));
+      .catch((err) => console.error("Error fetching alerts:", err))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchAlerts();
   }, []);
 
   return (
     <MainLayout>
       <div className="space-y-8">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <ShieldAlert className="h-6 w-6 text-blue-600" />
-            Safety Alerts
-          </h1>
-          <p className="text-gray-500">
-            Recent safety incidents and emergency notifications
-          </p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+              <ShieldAlert className="h-6 w-6 text-blue-600" />
+              Safety Alerts
+            </h1>
+            <p className="text-gray-500">
+              AI-generated emergency and health risk alerts
+            </p>
+          </div>
+
+          <Button variant="outline" onClick={fetchAlerts}>
+            <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
         </div>
 
         <div className="space-y-4">
@@ -50,9 +65,7 @@ export default function SafetyAlerts() {
                     }`}
                   />
                   <div>
-                    <p className="font-semibold text-gray-800">
-                      {alert.title}
-                    </p>
+                    <p className="font-semibold text-gray-800">{alert.title}</p>
                     <p className="text-sm text-gray-600">{alert.description}</p>
                   </div>
                 </div>
@@ -64,9 +77,7 @@ export default function SafetyAlerts() {
           ))}
 
           {alerts.length === 0 && (
-            <p className="text-gray-500 text-center">
-              No active safety alerts.
-            </p>
+            <p className="text-gray-500 text-center">No active safety alerts.</p>
           )}
         </div>
       </div>
